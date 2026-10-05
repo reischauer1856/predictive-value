@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>検査の的中率計算</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F4; --panel:#FFFFFF; --ink:#1E2633; --muted:#5B6676; --line:#D5DBE3;
+  --tp:#0F7B6C; --fp:#D08A0E; --fn:#B4435A; --tn:#C3CAD3; --accent:#2C4A7A;
+  --chip:#E3E8EF;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#151A22; --panel:#1E2530; --ink:#E6EAF0; --muted:#9AA5B5; --line:#323C4A;
+    --tp:#2BB39F; --fp:#E9A73A; --fn:#E0708A; --tn:#465163; --accent:#8FB0E6; --chip:#2A3340;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151A22; --panel:#1E2530; --ink:#E6EAF0; --muted:#9AA5B5; --line:#323C4A;
+  --tp:#2BB39F; --fp:#E9A73A; --fn:#E0708A; --tn:#465163; --accent:#8FB0E6; --chip:#2A3340;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%}
+.num{font-family:"Barlow","Zen Kaku Gothic New",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1120px;margin:0 auto;padding:24px 18px 48px}
+h1{font-size:1.55rem;margin:0 0 4px;font-weight:700;letter-spacing:.01em}
+.lead{color:var(--muted);margin:0 0 22px;font-size:.92rem}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.panel h2{font-size:1rem;margin:0 0 12px;font-weight:700}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{flex:1;padding:9px 6px;border:1px solid var(--line);background:transparent;color:var(--ink);
+  border-radius:8px;font:inherit;font-weight:500;cursor:pointer}
+.tab[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.tests{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.test{text-align:left;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:transparent;
+  color:var(--ink);font:inherit;cursor:pointer;line-height:1.35}
+.test small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
+.test[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.field{margin-bottom:16px}
+.field label{display:flex;justify-content:space-between;align-items:baseline;font-weight:500;margin-bottom:4px}
+.field .val{display:flex;align-items:baseline;gap:2px}
+.field input[type=number]{width:72px;text-align:right;font:inherit;font-family:"Barlow",sans-serif;font-size:1.05rem;
+  padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chip{border:none;background:var(--chip);color:var(--ink);font:inherit;font-size:.8rem;padding:4px 9px;border-radius:99px;cursor:pointer}
+.hint{font-size:.78rem;color:var(--muted);margin-top:4px}
+.results{display:flex;flex-direction:column;gap:20px}
+.headline{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:520px){.headline{grid-template-columns:1fr}}
+.pv{padding:16px 18px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
+.pv .label{font-weight:700;font-size:.95rem}
+.pv .sub{font-size:.8rem;color:var(--muted)}
+.pv .big{font-size:3.2rem;font-weight:700;line-height:1.05;margin:8px 0 4px}
+.pv.ppv .big{color:var(--tp)}
+.pv.npv .big{color:var(--accent)}
+.pv .note{font-size:.84rem;color:var(--muted)}
+.dots-wrap{overflow-x:auto}
+#dots{display:block;width:100%;max-width:640px;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:.86rem}
+.legend span{display:flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:50%;display:inline-block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{border:1px solid var(--line);padding:7px 8px;text-align:center}
+th{font-weight:500;color:var(--muted);background:var(--bg)}
+td.tp{color:var(--tp);font-weight:700} td.fp{color:var(--fp);font-weight:700}
+td.fn{color:var(--fn);font-weight:700} td.tn{font-weight:700}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin-top:14px;font-size:.9rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right}
+#curve{width:100%;height:auto;display:block}
+.foot{font-size:.78rem;color:var(--muted);margin-top:24px;line-height:1.7}
+.foot p{margin:0 0 6px}
+@media (prefers-reduced-motion:no-preference){ #dots circle{transition:fill .25s} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>検査の的中率計算</h1>
+  <p class="lead">感度・特異度・検査前確率から、陽性的中率（PPV）と陰性的中率（NPV）を計算します。</p>
+
+  <div class="grid">
+    <section class="panel" aria-label="入力">
+      <h2>疾患と検査を選ぶ</h2>
+      <div class="tabs" role="group" aria-label="疾患">
+        <button class="tab" data-disease="flu" aria-pressed="true">インフルエンザ</button>
+        <button class="tab" data-disease="covid" aria-pressed="false">COVID-19</button>
+        <button class="tab" data-disease="custom" aria-pressed="false">自由入力</button>
+      </div>
+      <div class="tests" id="tests"></div>
+
+      <div class="field">
+        <label for="se-n">感度 <span class="val"><input id="se-n" type="number" min="0" max="100" step="0.1"><span>%</span></span></label>
+        <input id="se" type="range" min="0" max="100" step="0.1" aria-label="感度">
+      </div>
+      <div class="field">
+        <label for="sp-n">特異度 <span class="val"><input id="sp-n" type="number" min="0" max="100" step="0.1"><span>%</span></span></label>
+        <input id="sp" type="range" min="0" max="100" step="0.1" aria-label="特異度">
+      </div>
+      <div class="field">
+        <label for="pre-n">検査前確率 <span class="val"><input id="pre-n" type="number" min="0" max="100" step="0.1"><span>%</span></span></label>
+        <input id="pre" type="range" min="0" max="100" step="0.1" aria-label="検査前確率">
+        <div class="chips" id="prechips"></div>
+        <div class="hint" id="prehint"></div>
+      </div>
+    </section>
+
+    <section class="results" aria-live="polite">
+      <div class="headline">
+        <div class="pv ppv">
+          <div class="label">陽性的中率 PPV</div>
+          <div class="sub">陽性と出た人が本当に罹患している確率</div>
+          <div class="big num" id="ppv">–</div>
+          <div class="note" id="ppvnote"></div>
+        </div>
+        <div class="pv npv">
+          <div class="label">陰性的中率 NPV</div>
+          <div class="sub">陰性と出た人が本当に罹患していない確率</div>
+          <div class="big num" id="npv">–</div>
+          <div class="note" id="npvnote"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>1,000人に検査したら</h2>
+        <div class="dots-wrap"><svg id="dots" viewBox="0 0 640 400" role="img" aria-label="1000人の内訳"></svg></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--tp)"></i>真陽性 <b class="num" id="l-tp"></b></span>
+          <span><i class="sw" style="background:var(--fn)"></i>偽陰性（見逃し） <b class="num" id="l-fn"></b></span>
+          <span><i class="sw" style="background:var(--fp)"></i>偽陽性 <b class="num" id="l-fp"></b></span>
+          <span><i class="sw" style="background:var(--tn)"></i>真陰性 <b class="num" id="l-tn"></b></span>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="panel">
+          <h2>2×2表（1,000人あたり）</h2>
+          <table class="num">
+            <thead><tr><th></th><th>罹患あり</th><th>罹患なし</th><th>計</th></tr></thead>
+            <tbody>
+              <tr><th>陽性</th><td class="tp" id="t-tp"></td><td class="fp" id="t-fp"></td><td id="t-pos"></td></tr>
+              <tr><th>陰性</th><td class="fn" id="t-fn"></td><td class="tn" id="t-tn"></td><td id="t-neg"></td></tr>
+              <tr><th>計</th><td id="t-d"></td><td id="t-nd"></td><td>1000</td></tr>
+            </tbody>
+          </table>
+          <dl class="kv num">
+            <dt>陽性尤度比 LR+</dt><dd id="lrp"></dd>
+            <dt>陰性尤度比 LR−</dt><dd id="lrn"></dd>
+            <dt>陰性でも罹患している確率</dt><dd id="postneg"></dd>
+          </dl>
+        </div>
+        <div class="panel">
+          <h2>検査前確率による的中率の変化</h2>
+          <svg id="curve" viewBox="0 0 400 270" role="img" aria-label="検査前確率とPPV・NPVの関係"></svg>
+          <div class="legend">
+            <span><i class="sw" style="background:var(--tp)"></i>PPV</span>
+            <span><i class="sw" style="background:var(--accent)"></i>NPV</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="foot">
+    <p>プリセットの感度・特異度は代表的な報告値です（インフルエンザ迅速抗原：Chartrand 2012、デジタルイムノアッセイ／迅速核酸増幅：Merckx 2017、COVID-19抗原定性：Cochrane 2022、PCRは採取部位・発症からの日数で大きく変動）。製品・検体採取・発症からの時間・ウイルス量で実際の値は変わるため、目的に応じて数値を調整してください。</p>
+    <p>検査前確率のシナリオはあくまで計算の目安で、疫学データに基づく値ではありません。</p>
+  </div>
+</div>
+
+<script>
+const PRESETS = {
+  flu: {
+    tests: [
+      {name:"迅速抗原検査（イムノクロマト）", note:"従来型の目視判定", se:62.3, sp:98.2},
+      {name:"迅速抗原検査（デジタルイムノアッセイ）", note:"機器による読み取り", se:80.0, sp:97.6},
+      {name:"迅速核酸増幅検査", note:"ID NOWなどのPOCT-NAAT", se:91.6, sp:99.2}
+    ],
+    scenarios: [
+      {label:"非流行期・軽い症状", p:2},
+      {label:"流行初期・発熱あり", p:20},
+      {label:"流行期・典型症状", p:60},
+      {label:"家族内発症＋典型症状", p:80}
+    ]
+  },
+  covid: {
+    tests: [
+      {name:"抗原定性検査（有症状）", note:"鼻咽頭・鼻腔ぬぐい", se:73.0, sp:99.6},
+      {name:"抗原定性検査（無症状）", note:"スクリーニング用途", se:54.7, sp:99.7},
+      {name:"PCR検査", note:"採取条件で感度が変動", se:90.0, sp:99.5}
+    ],
+    scenarios: [
+      {label:"無症状スクリーニング", p:1},
+      {label:"軽い上気道症状", p:10},
+      {label:"流行期・発熱と咽頭痛", p:40},
+      {label:"同居家族が陽性＋症状", p:70}
+    ]
+  },
+  custom: {
+    tests: [],
+    scenarios: [
+      {label:"1%",p:1},{label:"5%",p:5},{label:"10%",p:10},{label:"30%",p:30},{label:"50%",p:50},{label:"80%",p:80}
+    ]
+  }
+};
+
+const state = {disease:"flu", test:0, se:62.3, sp:98.2, pre:20};
+const $ = id => document.getElementById(id);
+
+function renderTests(){
+  const box = $("tests"); box.innerHTML = "";
+  const d = PRESETS[state.disease];
+  if(!d.tests.length){
+    box.innerHTML = '<div class="hint">下の数値を直接入力してください。</div>';
+  }
+  d.tests.forEach((t,i)=>{
+    const b = document.createElement("button");
+    b.className = "test"; b.setAttribute("aria-pressed", i===state.test);
+    b.innerHTML = `${t.name}<small>感度 ${t.se}% ／ 特異度 ${t.sp}%　${t.note}</small>`;
+    b.onclick = ()=>{ state.test=i; state.se=t.se; state.sp=t.sp; renderTests(); sync(); };
+    box.appendChild(b);
+  });
+  const chips = $("prechips"); chips.innerHTML = "";
+  d.scenarios.forEach(s=>{
+    const c = document.createElement("button");
+    c.className="chip"; c.textContent = state.disease==="custom" ? s.label : `${s.label} ${s.p}%`;
+    c.onclick = ()=>{ state.pre=s.p; sync(); };
+    chips.appendChild(c);
+  });
+  $("prehint").textContent = state.disease==="custom" ? "" : "シナリオは計算の目安です。臨床判断に合わせて調整してください。";
+}
+
+document.querySelectorAll(".tab").forEach(t=>{
+  t.onclick = ()=>{
+    state.disease = t.dataset.disease;
+    document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-pressed", x===t));
+    const d = PRESETS[state.disease];
+    if(d.tests.length){ state.test=0; state.se=d.tests[0].se; state.sp=d.tests[0].sp; }
+    else state.test=-1;
+    renderTests(); sync();
+  };
+});
+
+function bind(key){
+  const r=$(key), n=$(key+"-n");
+  const set = v => { v = Math.min(100, Math.max(0, parseFloat(v))); if(isNaN(v)) return;
+    state[key]=v;
+    if(key!=="pre" && state.disease!=="custom"){ state.test=-1; document.querySelectorAll(".test").forEach(b=>b.setAttribute("aria-pressed","false")); }
+    sync(key); };
+  r.addEventListener("input", e=>set(e.target.value));
+  n.addEventListener("input", e=>set(e.target.value));
+}
+["se","sp","pre"].forEach(bind);
+
+const fmt = (x,d=1) => isFinite(x) ? x.toFixed(d) : "–";
+const pct = x => isFinite(x) ? (x*100).toFixed(1)+"%" : "–";
+
+function counts(p,se,sp){
+  const raw = {tp:1000*p*se, fn:1000*p*(1-se), fp:1000*(1-p)*(1-sp), tn:1000*(1-p)*sp};
+  const keys = Object.keys(raw);
+  const fl = {}; let sum=0;
+  keys.forEach(k=>{fl[k]=Math.floor(raw[k]); sum+=fl[k];});
+  keys.sort((a,b)=>(raw[b]-Math.floor(raw[b]))-(raw[a]-Math.floor(raw[a])));
+  for(let i=0;i<1000-sum;i++) fl[keys[i%4]]++;
+  return {raw, n:fl};
+}
+
+/* dot grid */
+const COLS=40, ROWS=25, dotsSvg=$("dots"); const circles=[];
+(function(){
+  const ns="http://www.w3.org/2000/svg";
+  for(let i=0;i<1000;i++){
+    const c=document.createElementNS(ns,"circle");
+    const col=i%COLS,row=Math.floor(i/COLS);
+    c.setAttribute("cx", 8+col*16); c.setAttribute("cy", 8+row*16); c.setAttribute("r", 6);
+    dotsSvg.appendChild(c); circles.push(c);
+  }
+})();
+function paintDots(n){
+  // 罹患者は左から列単位で並べる（真陽性→偽陰性）、非罹患者は偽陽性→真陰性
+  const order=[];
+  for(let col=0;col<COLS;col++) for(let row=0;row<ROWS;row++) order.push(row*COLS+col);
+  const seq=[["tp",n.tp],["fn",n.fn],["fp",n.fp],["tn",n.tn]];
+  let k=0;
+  seq.forEach(([cls,cnt])=>{ for(let j=0;j<cnt;j++){ circles[order[k++]].setAttribute("fill",`var(--${cls})`);} });
+}
+
+/* curve */
+function drawCurve(se,sp,p){
+  const W=400,H=270,L=40,R=12,T=12,B=34, w=W-L-R, h=H-T-B;
+  const x=v=>L+v*w, y=v=>T+(1-v)*h;
+  let s="";
+  for(let g=0;g<=1.0001;g+=0.25){
+    s+=`<line x1="${x(0)}" x2="${x(1)}" y1="${y(g)}" y2="${y(g)}" stroke="var(--line)" stroke-width="1"/>`;
+    s+=`<text x="${L-6}" y="${y(g)+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="Barlow">${g*100}%</text>`;
+    s+=`<text x="${x(g)}" y="${H-16}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="Barlow">${g*100}%</text>`;
+  }
+  s+=`<text x="${L+w/2}" y="${H-2}" text-anchor="middle" font-size="11" fill="var(--muted)">検査前確率</text>`;
+  let pp="",np="";
+  for(let i=0;i<=200;i++){
+    const q=i/200;
+    const ppv = q===0?0:(se*q)/(se*q+(1-sp)*(1-q));
+    const npv = q===1?0:(sp*(1-q))/(sp*(1-q)+(1-se)*q);
+    pp+=(i?"L":"M")+x(q).toFixed(1)+","+y(isFinite(ppv)?ppv:0).toFixed(1);
+    np+=(i?"L":"M")+x(q).toFixed(1)+","+y(isFinite(npv)?npv:0).toFixed(1);
+  }
+  s+=`<path d="${pp}" fill="none" stroke="var(--tp)" stroke-width="2.5"/>`;
+  s+=`<path d="${np}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+  const ppv=(se*p)/(se*p+(1-sp)*(1-p)), npv=(sp*(1-p))/(sp*(1-p)+(1-se)*p);
+  s+=`<line x1="${x(p)}" x2="${x(p)}" y1="${T}" y2="${T+h}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  if(isFinite(ppv)) s+=`<circle cx="${x(p)}" cy="${y(ppv)}" r="5" fill="var(--tp)" stroke="var(--panel)" stroke-width="2"/>`;
+  if(isFinite(npv)) s+=`<circle cx="${x(p)}" cy="${y(npv)}" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
+  $("curve").innerHTML=s;
+}
+
+function sync(from){
+  ["se","sp","pre"].forEach(k=>{
+    $(k).value=state[k];
+    if(from!==k || document.activeElement!==$(k+"-n")) $(k+"-n").value=state[k];
+  });
+  const se=state.se/100, sp=state.sp/100, p=state.pre/100;
+  const ppv=(se*p)/(se*p+(1-sp)*(1-p));
+  const npv=(sp*(1-p))/(sp*(1-p)+(1-se)*p);
+  $("ppv").textContent=pct(ppv);
+  $("npv").textContent=pct(npv);
+  const {n}=counts(p,se,sp);
+  const pos=n.tp+n.fp, neg=n.fn+n.tn;
+  $("ppvnote").textContent = pos ? `陽性 ${pos}人のうち ${n.fp}人は偽陽性` : "陽性者なし";
+  $("npvnote").textContent = neg ? `陰性 ${neg}人のうち ${n.fn}人は見逃し` : "陰性者なし";
+  ["tp","fp","fn","tn"].forEach(k=>{$("t-"+k).textContent=n[k]; $("l-"+k).textContent=n[k]+"人";});
+  $("t-pos").textContent=pos; $("t-neg").textContent=neg;
+  $("t-d").textContent=n.tp+n.fn; $("t-nd").textContent=n.fp+n.tn;
+  const lrp=se/(1-sp), lrn=(1-se)/sp;
+  $("lrp").textContent = sp>=1 ? "∞" : fmt(lrp,1);
+  $("lrn").textContent = fmt(lrn,2);
+  $("postneg").textContent = pct(1-npv);
+  paintDots(n);
+  drawCurve(se,sp,p);
+}
+
+renderTests(); sync();
+</script>
+</body>
+</html>
